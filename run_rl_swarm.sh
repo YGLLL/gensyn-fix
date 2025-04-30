@@ -1,9 +1,13 @@
 #!/bin/bash
 
-set -euo pipefail
+# Remove set -euo pipefail to allow error handling
+# set -euo pipefail
 
 # General arguments
 ROOT=$PWD
+
+# Record start time
+START_TIME=$(date +%s)
 
 export PUB_MULTI_ADDRS
 export PEER_MULTI_ADDRS
@@ -53,17 +57,42 @@ echo_blue() {
 
 ROOT_DIR="$(cd $(dirname ${BASH_SOURCE[0]}) && pwd)"
 
+# Function to calculate and display runtime
+display_runtime() {
+    END_TIME=$(date +%s)
+    RUNTIME=$((END_TIME - START_TIME))
+    HOURS=$((RUNTIME / 3600))
+    MINUTES=$(( (RUNTIME % 3600) / 60 ))
+    SECONDS=$((RUNTIME % 60))
+    echo "Runtime: ${HOURS}h ${MINUTES}m ${SECONDS}s"
+}
+
+# Function to handle errors
+handle_error() {
+    local exit_code=$?
+    echo -e "\nScript encountered an error with exit code: $exit_code"
+    display_runtime
+    cleanup
+    exit $exit_code
+}
+
+# Set up trap for errors
+trap handle_error ERR
+
 # Function to clean up the server process upon exit
 cleanup() {
     echo_green ">> Shutting down trainer..."
-
+    echo_blue ">> P2P Daemon log file: $P2P_DAEMON_LOG_FILE"
+    
     # Remove modal credentials if they exist
     rm -r $ROOT_DIR/modal-login/temp-data/*.json 2> /dev/null || true
 
     # Kill all processes belonging to this script's process group
     kill -- -$$ || true
 
-    exit 0
+    # Remove trap before normal exit
+    trap - EXIT
+    echo "Script completed successfully. $(display_runtime)"
 }
 
 trap cleanup EXIT
@@ -124,7 +153,11 @@ if [ "$CONNECT_TO_TESTNET" = true ]; then
     echo "Please login to create an Ethereum Server Wallet"
     cd modal-login
     # Check if the yarn command exists; if not, install Yarn.
-    source ~/.bashrc
+    if [ -f ~/.bashrc ]; then
+        source ~/.bashrc
+    elif [ -f ~/.zshrc ]; then
+        source ~/.zshrc
+    fi
 
     # Node.js + NVM setup
     if ! command -v node > /dev/null 2>&1; then
